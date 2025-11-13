@@ -3,171 +3,295 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VW FTF Crypto Analyzer</title>
+    <title>VW FTF Comparator Tool</title>
     <style>
-        body { font-family: monospace; background: #1e1e1e; color: #d4d4d4; padding: 20px; }
-        h1 { color: #4ec9b0; }
-        .container { max-width: 1200px; margin: 0 auto; }
+        body { font-family: 'Consolas', 'Monaco', monospace; background: #1e1e1e; color: #d4d4d4; padding: 20px; }
+        h1 { color: #4ec9b0; text-align: center; }
+        .container { max-width: 1400px; margin: 0 auto; }
         
-        /* Upload Area */
-        .upload-box { border: 2px dashed #444; padding: 20px; text-align: center; margin-bottom: 20px; cursor: pointer; }
-        .upload-box:hover { border-color: #4ec9b0; background: #252526; }
+        /* Upload Grid */
+        .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+        .upload-box { 
+            border: 2px dashed #444; padding: 30px; text-align: center; 
+            cursor: pointer; transition: all 0.3s; background: #252526;
+        }
+        .upload-box:hover { border-color: #4ec9b0; background: #2d2d2d; }
+        .upload-box.loaded { border-color: #6a9955; background: #1e2e1e; }
+        .file-name { margin-top: 10px; font-weight: bold; color: #9cdcfe; }
+
+        /* Legend */
+        .legend { margin-bottom: 10px; font-size: 12px; text-align: center;}
+        .legend span { margin: 0 10px; padding: 2px 6px; border-radius: 3px; }
         
         /* Table Styles */
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
-        th, td { border: 1px solid #333; padding: 8px; text-align: left; }
-        th { background-color: #2d2d2d; color: #9cdcfe; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        th, td { border: 1px solid #333; padding: 10px; text-align: left; vertical-align: top; }
+        th { background-color: #2d2d2d; color: #dcdcaa; text-transform: uppercase; letter-spacing: 1px; }
         tr:nth-child(even) { background-color: #252526; }
-        
-        /* Syntax Highlighting for Payload */
-        .byte { display: inline-block; padding: 0 2px; }
-        .p-header { color: #569cd6; font-weight: bold; } /* Blue */
-        .p-status { color: #dcdcaa; } /* Yellow */
-        .p-sep { color: #c586c0; font-weight: bold; } /* Pink (1E/1A) */
-        .p-id { color: #4ec9b0; font-weight: bold; text-decoration: underline; } /* Cyan (The ID) */
-        .p-crypto { color: #ce9178; } /* Orange (The encrypted part) */
-        .p-counter { color: #f44747; font-weight: bold; } /* Red (Rolling Counter) */
-        
-        .badge { padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; }
-        .badge-mob { background: #0e639c; color: white; } /* Mobile */
-        .badge-stat { background: #803d00; color: white; } /* Station */
-        .badge-crypt { background: #7a1e1e; color: white; } /* Crypto Active */
+
+        /* Diff Colors (Rows) */
+        tr.diff-new { background-color: rgba(50, 100, 50, 0.2); } /* Greenish */
+        tr.diff-gone { background-color: rgba(100, 50, 50, 0.2); } /* Reddish */
+        tr.diff-change { background-color: rgba(100, 100, 50, 0.2); } /* Yellowish */
+
+        /* Payload Highlighting */
+        .p-header { color: #569cd6; font-weight: bold; }
+        .p-status { color: #dcdcaa; font-weight: bold; }
+        .p-sep { color: #c586c0; font-weight: bold; }
+        .p-id { color: #4ec9b0; font-weight: bold; text-decoration: underline; }
+        .p-crypto { color: #ce9178; }
+        .p-counter { color: #f44747; }
+        .p-diff { background: #dcdcaa; color: #1e1e1e; padding: 0 2px; font-weight: bold;}
+
+        /* Badges */
+        .badge { padding: 3px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; display: inline-block; margin-right: 5px;}
+        .badge-mob { background: #0e639c; color: white; } 
+        .badge-stat { background: #803d00; color: white; }
+        .badge-crypt { background: #7a1e1e; color: white; }
+        .badge-new { background: #3c8031; color: white; }
+        .badge-gone { background: #803131; color: white; }
+        .badge-chg { background: #b8b028; color: black; }
+
+        .empty-cell { color: #555; font-style: italic; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>🚗 VW FTF Protocol Analyzer</h1>
-    <p>Lade deine JSON-Scan-Dateien hoch, um die "Goldene Regel" anzuwenden.</p>
+    <h1>⚡ VW FTF - Flotten Vergleich ⚡</h1>
     
-    <input type="file" id="fileInput" accept=".json" style="display:none">
-    <div class="upload-box" onclick="document.getElementById('fileInput').click()">
-        Klicken zum Hochladen der JSON-Datei
+    <div class="upload-grid">
+        <div>
+            <input type="file" id="fileA" accept=".json" style="display:none" onchange="handleFile(this, 'A')">
+            <div class="upload-box" id="boxA" onclick="document.getElementById('fileA').click()">
+                <h3>DATEI A (Referenz)</h3>
+                <p>Hier klicken zum Laden</p>
+                <div id="nameA" class="file-name"></div>
+            </div>
+        </div>
+        <div>
+            <input type="file" id="fileB" accept=".json" style="display:none" onchange="handleFile(this, 'B')">
+            <div class="upload-box" id="boxB" onclick="document.getElementById('fileB').click()">
+                <h3>DATEI B (Vergleich)</h3>
+                <p>Hier klicken zum Laden</p>
+                <div id="nameB" class="file-name"></div>
+            </div>
+        </div>
     </div>
 
-    <div id="stats"></div>
-    <table id="resultsTable">
+    <div class="legend">
+        <span style="background: rgba(50, 100, 50, 0.4)">NEU in B</span>
+        <span style="background: rgba(100, 50, 50, 0.4)">NICHT MEHR in B</span>
+        <span style="background: rgba(100, 100, 50, 0.4)">STATUS GEÄNDERT</span>
+    </div>
+
+    <table id="compareTable">
         <thead>
             <tr>
-                <th>Typ</th>
-                <th>Interne ID</th>
-                <th>Status</th>
-                <th>Analysierte Payload (Hex)</th>
-                <th>Zeit (t)</th>
+                <th width="10%">ID (Fingerprint)</th>
+                <th width="10%">Typ</th>
+                <th width="40%">Datei A (Status & Payload)</th>
+                <th width="40%">Datei B (Status & Payload)</th>
             </tr>
         </thead>
         <tbody id="tableBody">
+            <tr><td colspan="4" style="text-align:center; padding: 30px; color: #666;">Bitte zwei JSON-Dateien hochladen...</td></tr>
         </tbody>
     </table>
 </div>
 
 <script>
-    document.getElementById('fileInput').addEventListener('change', handleFileSelect, false);
+    let dataA = null;
+    let dataB = null;
 
-    function handleFileSelect(evt) {
-        const file = evt.target.files[0];
+    // Handle File Upload
+    function handleFile(input, slot) {
+        const file = input.files[0];
+        if (!file) return;
+
+        document.getElementById('name' + slot).innerText = file.name;
+        document.getElementById('box' + slot).classList.add('loaded');
+
         const reader = new FileReader();
         reader.onload = function(e) {
             try {
                 const json = JSON.parse(e.target.result);
-                analyzeData(json);
+                if (slot === 'A') dataA = parseDevices(json);
+                if (slot === 'B') dataB = parseDevices(json);
+                
+                if (dataA && dataB) {
+                    renderComparison();
+                } else if (dataA) {
+                    renderSingle(dataA, 'A');
+                } else if (dataB) {
+                    renderSingle(dataB, 'B');
+                }
             } catch (err) {
-                alert("Fehler beim Lesen der JSON: " + err);
+                alert("JSON Fehler: " + err);
             }
         };
         reader.readAsText(file);
     }
 
-    function analyzeData(data) {
-        const tbody = document.getElementById('tableBody');
-        tbody.innerHTML = ''; // Clear old results
-        let count = 0;
+    // --- THE CORE LOGIC ---
+    // Extracts valid FTF packets based on the "Golden Rule"
+    function parseDevices(json) {
+        let deviceMap = {}; // Key = 3-Byte ID (e.g., "A61E58")
 
-        // Extract all payloads from history and current state
-        let allPackets = [];
-        data.devices.forEach(dev => {
-            if(dev.history) {
-                dev.history.forEach(h => {
-                    allPackets.push({ payload: h.p, t: h.t, rssi: h.r });
-                });
-            }
-            if(dev.rawDataPayload) {
-                allPackets.push({ payload: dev.rawDataPayload, t: 'Last', rssi: 0 });
-            }
-        });
-
-        // Sort by time
-        allPackets.sort((a, b) => a.t - b.t);
-
-        // Filter and Render
-        allPackets.forEach(pkt => {
-            const p = pkt.payload;
+        // Helper to process a payload string
+        const processPayload = (p, rssi, t) => {
             if (!p) return;
+            
+            let id = null;
+            let type = null;
+            let status = null;
+            let isCrypto = false;
+            let cleanPayload = p;
 
-            // --- RULE 1: Standard Status Packet (1006...1E/1A...) ---
-            // Regex: Starts with 1006, Length usually 16 chars (8 bytes)
-            if (p.startsWith('1006') && p.length <= 20) {
-                const typeByte = p.substring(6, 8); // The 4th Byte (Index 6-7 in hex string)
-                
-                let typeLabel = 'UNK';
-                let cssClass = '';
-                
-                if (typeByte === '1E') { typeLabel = 'MOBILE (FTF)'; cssClass = 'badge-mob'; }
-                else if (typeByte === '1A') { typeLabel = 'STATION'; cssClass = 'badge-stat'; }
-                else return; // Ignore if not matching our pattern
+            // Rule 1: Standard (1006...1E/1A...)
+            if (p.startsWith('1006') && p.length >= 16) {
+                const separator = p.substring(6, 8);
+                if (separator === '1E') type = 'MOBILE';
+                else if (separator === '1A') type = 'STATION';
+                else return; // Invalid
 
-                const htmlPayload = `
-                    <span class="p-header">1006</span>
-                    <span class="p-status">${p.substring(4,6)}</span>
-                    <span class="p-sep">${typeByte}</span>
-                    <span class="p-id">${p.substring(8,14)}</span>
-                    <span class="byte">${p.substring(14)}</span>
-                `;
-
-                addRow(cssClass, typeLabel, p.substring(8,14), p.substring(4,6), htmlPayload, pkt.t);
-                count++;
+                status = p.substring(4, 6);
+                id = p.substring(8, 14);
             }
-
-            // --- RULE 2: Crypto Packet (0C0E...) ---
+            // Rule 2: Crypto (0C0E...)
             else if (p.startsWith('0C0E')) {
-                // Check footer for ID confirmation
-                // We look for "1005" + Status + "1C" + ID at the end
                 const footerIndex = p.indexOf('1005');
-                let id = "UNKNOWN";
-                
-                if (footerIndex > -1) {
-                    // Extract ID relative to footer: 1005 [SS] 1C [ID ID ID]
-                    // 1005 = 4 chars, SS = 2, 1C = 2. ID starts at index 8 after footer start
+                if (footerIndex > -1 && p.substring(footerIndex + 6, footerIndex + 8) === '1C') {
                     id = p.substring(footerIndex + 8, footerIndex + 14);
+                    type = 'MOBILE';
+                    status = p.substring(footerIndex + 4, footerIndex + 6); // Status from footer
+                    isCrypto = true;
+                } else {
+                    return;
                 }
+            } 
+            // Rule 3: Special Infrastructure (2D...)
+            else if (p.startsWith('2DC1')) {
+                id = p.substring(2, 8); // Guessing ID position based on your log
+                type = 'SPECIAL';
+                status = 'UNK';
+            } 
+            else { return; }
 
-                const htmlPayload = `
-                    <span class="p-header">0C0E</span>
-                    <span class="byte">00</span>
-                    <span class="p-counter">${p.substring(6,8)}</span>
-                    <span class="p-crypto">${p.substring(8, footerIndex)}</span>
-                    <span class="p-header">1005</span>...<span class="p-id">${id}</span>
-                `;
-
-                addRow('badge-crypt', 'CRYPTO ACT', id, 'ACTIVE', htmlPayload, pkt.t);
-                count++;
+            // Store/Update best packet for this ID
+            if (!deviceMap[id]) {
+                deviceMap[id] = { 
+                    id: id, 
+                    type: type, 
+                    lastStatus: status, 
+                    lastPayload: p, 
+                    rssi: rssi,
+                    isCrypto: isCrypto
+                };
+            } else {
+                // Prioritize Crypto packets over normal ones for display, or newer ones
+                if (isCrypto || (!deviceMap[id].isCrypto)) {
+                    deviceMap[id].lastStatus = status;
+                    deviceMap[id].lastPayload = p;
+                    deviceMap[id].isCrypto = isCrypto || deviceMap[id].isCrypto;
+                    deviceMap[id].rssi = rssi; // Update RSSI to latest seen
+                }
             }
+        };
+
+        json.devices.forEach(d => {
+            // Check current
+            if(d.rawDataPayload) processPayload(d.rawDataPayload, (d.rssi || -100), 0);
+            // Check history
+            if(d.history) d.history.forEach(h => processPayload(h.p, h.r, h.t));
         });
 
-        document.getElementById('stats').innerText = `Gefundene relevante Pakete: ${count}`;
+        return deviceMap;
     }
 
-    function addRow(badgeClass, type, id, status, htmlPayload, time) {
-        const row = `<tr>
-            <td><span class="badge ${badgeClass}">${type}</span></td>
-            <td>${id}</td>
-            <td>${status}</td>
-            <td>${htmlPayload}</td>
-            <td>${time}</td>
-        </tr>`;
-        document.getElementById('tableBody').insertAdjacentHTML('beforeend', row);
+    // --- RENDERING ---
+
+    function renderSingle(data, slot) {
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px;">Warte auf zweite Datei... (Zeige ${Object.keys(data).length} Geräte aus ${slot})</td></tr>`;
+    }
+
+    function renderComparison() {
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = '';
+
+        // Get all unique IDs from both sets
+        const allIds = new Set([...Object.keys(dataA), ...Object.keys(dataB)]);
+        const sortedIds = Array.from(allIds).sort();
+
+        sortedIds.forEach(id => {
+            const devA = dataA[id];
+            const devB = dataB[id];
+            
+            let rowClass = '';
+            let badge = '';
+
+            // Determine Diff State
+            if (!devA && devB) {
+                rowClass = 'diff-new';
+                badge = '<span class="badge badge-new">NEU</span>';
+            } else if (devA && !devB) {
+                rowClass = 'diff-gone';
+                badge = '<span class="badge badge-gone">WEG</span>';
+            } else if (devA && devB) {
+                // Exists in both, check for changes
+                if (devA.lastStatus !== devB.lastStatus || devA.isCrypto !== devB.isCrypto) {
+                    rowClass = 'diff-change';
+                    badge = '<span class="badge badge-chg">ÄNDERUNG</span>';
+                }
+            }
+
+            // Determine Type Label from whichever exists
+            const typeStr = (devA || devB).type;
+            let typeBadgeClass = 'badge-mob';
+            if (typeStr === 'STATION') typeBadgeClass = 'badge-stat';
+            if (typeStr === 'SPECIAL') typeBadgeClass = 'badge-crypt';
+
+            // Build Cells
+            const cellA = devA ? buildCell(devA) : '<span class="empty-cell">Nicht in Datei A</span>';
+            const cellB = devB ? buildCell(devB) : '<span class="empty-cell">Nicht in Datei B</span>';
+
+            const row = `
+                <tr class="${rowClass}">
+                    <td><span style="font-family:monospace; font-size:1.2em;">${id}</span></td>
+                    <td><span class="badge ${typeBadgeClass}">${typeStr}</span>${badge}</td>
+                    <td>${cellA}</td>
+                    <td>${cellB}</td>
+                </tr>
+            `;
+            tbody.insertAdjacentHTML('beforeend', row);
+        });
+    }
+
+    function buildCell(dev) {
+        let html = `<div><strong>Status:</strong> ${dev.lastStatus} <span style="color:#888">(${dev.rssi} dBm)</span></div>`;
+        if(dev.isCrypto) html += `<span class="badge badge-crypt">CRYPTO ACTIVE</span> `;
+        
+        // Colorize Payload
+        const p = dev.lastPayload;
+        let coloredP = p;
+
+        if (p.startsWith('1006')) {
+            coloredP = `
+                <span class="p-header">1006</span><span class="p-status">${p.substring(4,6)}</span><span class="p-sep">${p.substring(6,8)}</span><span class="p-id">${p.substring(8,14)}</span><span class="byte">${p.substring(14)}</span>
+            `;
+        } else if (p.startsWith('0C0E')) {
+             const footerIndex = p.indexOf('1005');
+             coloredP = `
+                <span class="p-header">0C0E</span><span class="byte">00</span><span class="p-counter">${p.substring(6,8)}</span><span class="p-crypto">${p.substring(8, footerIndex)}</span><span class="p-header">1005</span>...<span class="p-id">${dev.id}</span>
+            `;
+        }
+
+        html += `<div style="margin-top:5px; font-family:monospace; word-break:break-all;">${coloredP}</div>`;
+        return html;
     }
 </script>
 
 </body>
 </html>
+ 
