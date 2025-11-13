@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VW FTF Crypto Analyzer</title>
+    <style>
+        body { font-family: monospace; background: #1e1e1e; color: #d4d4d4; padding: 20px; }
+        h1 { color: #4ec9b0; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        
+        /* Upload Area */
+        .upload-box { border: 2px dashed #444; padding: 20px; text-align: center; margin-bottom: 20px; cursor: pointer; }
+        .upload-box:hover { border-color: #4ec9b0; background: #252526; }
+        
+        /* Table Styles */
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
+        th, td { border: 1px solid #333; padding: 8px; text-align: left; }
+        th { background-color: #2d2d2d; color: #9cdcfe; }
+        tr:nth-child(even) { background-color: #252526; }
+        
+        /* Syntax Highlighting for Payload */
+        .byte { display: inline-block; padding: 0 2px; }
+        .p-header { color: #569cd6; font-weight: bold; } /* Blue */
+        .p-status { color: #dcdcaa; } /* Yellow */
+        .p-sep { color: #c586c0; font-weight: bold; } /* Pink (1E/1A) */
+        .p-id { color: #4ec9b0; font-weight: bold; text-decoration: underline; } /* Cyan (The ID) */
+        .p-crypto { color: #ce9178; } /* Orange (The encrypted part) */
+        .p-counter { color: #f44747; font-weight: bold; } /* Red (Rolling Counter) */
+        
+        .badge { padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+        .badge-mob { background: #0e639c; color: white; } /* Mobile */
+        .badge-stat { background: #803d00; color: white; } /* Station */
+        .badge-crypt { background: #7a1e1e; color: white; } /* Crypto Active */
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🚗 VW FTF Protocol Analyzer</h1>
+    <p>Lade deine JSON-Scan-Dateien hoch, um die "Goldene Regel" anzuwenden.</p>
+    
+    <input type="file" id="fileInput" accept=".json" style="display:none">
+    <div class="upload-box" onclick="document.getElementById('fileInput').click()">
+        Klicken zum Hochladen der JSON-Datei
+    </div>
+
+    <div id="stats"></div>
+    <table id="resultsTable">
+        <thead>
+            <tr>
+                <th>Typ</th>
+                <th>Interne ID</th>
+                <th>Status</th>
+                <th>Analysierte Payload (Hex)</th>
+                <th>Zeit (t)</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody">
+        </tbody>
+    </table>
+</div>
+
+<script>
+    document.getElementById('fileInput').addEventListener('change', handleFileSelect, false);
+
+    function handleFileSelect(evt) {
+        const file = evt.target.files[0];
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const json = JSON.parse(e.target.result);
+                analyzeData(json);
+            } catch (err) {
+                alert("Fehler beim Lesen der JSON: " + err);
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    function analyzeData(data) {
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = ''; // Clear old results
+        let count = 0;
+
+        // Extract all payloads from history and current state
+        let allPackets = [];
+        data.devices.forEach(dev => {
+            if(dev.history) {
+                dev.history.forEach(h => {
+                    allPackets.push({ payload: h.p, t: h.t, rssi: h.r });
+                });
+            }
+            if(dev.rawDataPayload) {
+                allPackets.push({ payload: dev.rawDataPayload, t: 'Last', rssi: 0 });
+            }
+        });
+
+        // Sort by time
+        allPackets.sort((a, b) => a.t - b.t);
+
+        // Filter and Render
+        allPackets.forEach(pkt => {
+            const p = pkt.payload;
+            if (!p) return;
+
+            // --- RULE 1: Standard Status Packet (1006...1E/1A...) ---
+            // Regex: Starts with 1006, Length usually 16 chars (8 bytes)
+            if (p.startsWith('1006') && p.length <= 20) {
+                const typeByte = p.substring(6, 8); // The 4th Byte (Index 6-7 in hex string)
+                
+                let typeLabel = 'UNK';
+                let cssClass = '';
+                
+                if (typeByte === '1E') { typeLabel = 'MOBILE (FTF)'; cssClass = 'badge-mob'; }
+                else if (typeByte === '1A') { typeLabel = 'STATION'; cssClass = 'badge-stat'; }
+                else return; // Ignore if not matching our pattern
+
+                const htmlPayload = `
+                    <span class="p-header">1006</span>
+                    <span class="p-status">${p.substring(4,6)}</span>
+                    <span class="p-sep">${typeByte}</span>
+                    <span class="p-id">${p.substring(8,14)}</span>
+                    <span class="byte">${p.substring(14)}</span>
+                `;
+
+                addRow(cssClass, typeLabel, p.substring(8,14), p.substring(4,6), htmlPayload, pkt.t);
+                count++;
+            }
+
+            // --- RULE 2: Crypto Packet (0C0E...) ---
+            else if (p.startsWith('0C0E')) {
+                // Check footer for ID confirmation
+                // We look for "1005" + Status + "1C" + ID at the end
+                const footerIndex = p.indexOf('1005');
+                let id = "UNKNOWN";
+                
+                if (footerIndex > -1) {
+                    // Extract ID relative to footer: 1005 [SS] 1C [ID ID ID]
+                    // 1005 = 4 chars, SS = 2, 1C = 2. ID starts at index 8 after footer start
+                    id = p.substring(footerIndex + 8, footerIndex + 14);
+                }
+
+                const htmlPayload = `
+                    <span class="p-header">0C0E</span>
+                    <span class="byte">00</span>
+                    <span class="p-counter">${p.substring(6,8)}</span>
+                    <span class="p-crypto">${p.substring(8, footerIndex)}</span>
+                    <span class="p-header">1005</span>...<span class="p-id">${id}</span>
+                `;
+
+                addRow('badge-crypt', 'CRYPTO ACT', id, 'ACTIVE', htmlPayload, pkt.t);
+                count++;
+            }
+        });
+
+        document.getElementById('stats').innerText = `Gefundene relevante Pakete: ${count}`;
+    }
+
+    function addRow(badgeClass, type, id, status, htmlPayload, time) {
+        const row = `<tr>
+            <td><span class="badge ${badgeClass}">${type}</span></td>
+            <td>${id}</td>
+            <td>${status}</td>
+            <td>${htmlPayload}</td>
+            <td>${time}</td>
+        </tr>`;
+        document.getElementById('tableBody').insertAdjacentHTML('beforeend', row);
+    }
+</script>
+
+</body>
+</html>
